@@ -1,0 +1,12 @@
+{
+  "normal_train_rows": 396000,
+  "normal_calibration_rows": 99000,
+  "attack_test_rows": 449919,
+  "feature_count": 45,
+  "seed": 42,
+  "threshold_percentile": 99,
+  "svm_training_max": 5000,
+  "autoencoder_training_max": 30000,
+  "normal_split": "chronological first 80% train, last 20% calibration",
+  "warning": "Original Isolation Forest published metrics use a different training/calibration protocol and are not directly comparable."
+}

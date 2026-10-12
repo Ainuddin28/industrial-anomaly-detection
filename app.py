@@ -2,6 +2,8 @@
 No SWaT records, attack schedules, or pretrained SWaT artifacts are included.
 Run: python -m streamlit run app.py
 """
+import json
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -84,7 +86,7 @@ normal, monitoring, labels, model, scaler, normal_scores, monitor_scores, thresh
 flags = (monitor_scores > threshold).astype(int)
 st.markdown("""<div class="hero"><div class="eyebrow">Research prototype · Industrial anomaly detection</div>
 <h1>Industrial Anomaly Explainer</h1><p>Explainable machine learning for multivariate industrial sensor monitoring · Isolation Forest + SHAP</p></div>""", unsafe_allow_html=True)
-st.info("**Two clearly separated components:** The **Research Results** tab reports evaluation from the original locally run SWaT-based research prototype. The other interactive tabs run an **independent synthetic-data demonstration**. No SWaT records, attack schedules, or SWaT-trained model artifacts are hosted here.", icon="ℹ️")
+st.info("**Two clearly separated components:** The **Research Results** and **Model Comparison** tabs report results from locally run SWaT research experiments (using different evaluation protocols). The other interactive tabs run an **independent synthetic-data demonstration**. No SWaT records, attack schedules, or SWaT-trained model artifacts are hosted here.", icon="ℹ️")
 with st.sidebar:
     st.header("Demo observation controls")
     sample = st.selectbox("Quick example",["Injected disturbance example","Undisturbed example","Custom row"])
@@ -95,12 +97,13 @@ with st.sidebar:
     st.caption(f"{len(FEATURES)} synthetic features · {model.n_estimators} trees")
     st.caption("Threshold: normal training score 99th percentile")
 
-research, summary, observation, explain, temporal, context, method, explorer, simulator = st.tabs([
-    "🎓 Research Results", "📊 Demo Overview", "🔎 Observation", "🧠 SHAP Influence", "📈 Temporal Context",
+research, comparison, summary, observation, explain, temporal, context, method, explorer, simulator = st.tabs([
+    "🎓 Research Results", "⚖️ Model Comparison", "📊 Demo Overview", "🔎 Observation", "🧠 SHAP Influence", "📈 Temporal Context",
     "🚨 Disturbance Context", "ℹ️ Methodology", "🔬 Anomaly Explorer", "🎛️ Sensor Simulator"])
 
 with research:
     st.subheader("Research results · original SWaT-based prototype")
+    st.info("These original Isolation Forest figures use a different training/calibration protocol from the three-model experiment. Compare the three algorithms using the **Model Comparison** tab, not against the figures below.")
     st.caption("These are results reported from the separate, locally executed SWaT research implementation. They are NOT computed by the hosted synthetic demonstration.")
     r1,r2,r3,r4=st.columns(4)
     r1.metric("Precision", "86.02%")
@@ -128,13 +131,58 @@ with research:
 - The research decision threshold was set at the 99th percentile of normal training scores.
 - Absolute SHAP magnitudes indicate relative influence on the explainer's internal model output, **not** causal effects.""")
     st.markdown("#### Guided demonstration workflow")
-    st.markdown("**Start here:** Review the real SWaT metrics above → open **Demo Overview** to inspect synthetic monitoring → use **Anomaly Explorer** for model-flagged readings → visit **Sensor Simulator** to enter all 45 readings manually, generate synthetic streams, or upload a non-restricted CSV → inspect SHAP influence. Every interactive prediction uses the separate synthetic-trained model.")
+    st.markdown("**Start here:** Review the original SWaT metrics above → open **Model Comparison** for the separate three-model experiment → open **Demo Overview** to inspect synthetic monitoring → use **Anomaly Explorer** for model-flagged readings → visit **Sensor Simulator** to enter all 45 readings manually, generate synthetic streams, or upload a non-restricted CSV → inspect SHAP influence. Every interactive prediction uses the separate synthetic-trained model.")
     st.markdown("#### What can be tested on this website?")
     st.markdown("The remaining tabs let reviewers inspect synthetic observations, explore detected disturbances, change sensor values, generate synthetic monitoring sequences and upload **non-restricted** CSV samples. This validates the interaction design and analysis workflow, **not** the reported SWaT performance figures.")
     st.warning("**Research limitations:** The online model is separately trained on synthetic readings. Its predictions, threshold and disturbance scenarios cannot be interpreted as SWaT results or validated real-world attack detection.")
     st.markdown("#### Reproducibility and demonstration")
     st.markdown("The original SWaT-trained prototype and its research evaluation are maintained locally for authorised demonstration. This website intentionally does not provide the restricted dataset or pretrained SWaT artifacts.")
     st.link_button("View public synthetic demo source code", "https://github.com/Ainuddin28/industrial-anomaly-detection")
+
+
+with comparison:
+    st.subheader("Three-model comparison · local SWaT experiment")
+    st.caption("Aggregate results from a separate, locally executed experiment on labelled SWaT attack-period observations. These are NOT predictions from the hosted synthetic demonstration.")
+    st.info("**Evaluation distinction:** The original Research Results tab reports an earlier Isolation Forest experiment (F1 71.93%). This comparison uses a chronological 80/20 normal training/calibration split and a separate 99th-percentile calibration threshold (Isolation Forest F1 63.82%). The two experiments are not directly comparable.")
+    comparison_df = pd.read_csv(Path(__file__).resolve().parent / "model_comparison.csv")
+    comparison_meta = json.loads((Path(__file__).resolve().parent / "experiment_metadata.json").read_text(encoding="utf-8"))
+    display = comparison_df.copy()
+    for col in ["Precision", "Recall", "F1", "Average_Precision"]:
+        display[col] = display[col] * 100
+    st.markdown("#### Measured evaluation results")
+    st.dataframe(display[["Model", "Precision", "Recall", "F1", "Average_Precision", "FP", "FN"]].rename(columns={
+        "Precision": "Precision (%)", "Recall": "Recall (%)", "F1": "F1 (%)",
+        "Average_Precision": "Average precision (%)", "FP": "False positives", "FN": "False negatives"
+    }).style.format({"Precision (%)":"{:.2f}", "Recall (%)":"{:.2f}", "F1 (%)":"{:.2f}",
+                     "Average precision (%)":"{:.2f}"}), hide_index=True, use_container_width=True)
+    best_f1 = comparison_df.loc[comparison_df["F1"].idxmax()]
+    best_recall = comparison_df.loc[comparison_df["Recall"].idxmax()]
+    k1,k2,k3 = st.columns(3)
+    k1.metric("Highest F1", str(best_f1["Model"]), f'{best_f1["F1"]:.2%}')
+    k2.metric("Highest recall", str(best_recall["Model"]), f'{best_recall["Recall"]:.2%}')
+    k3.metric("Evaluated SWaT rows", f'{int(comparison_meta["attack_test_rows"]):,}')
+    st.markdown("#### Precision, recall and F1")
+    chart = display.set_index("Model")[["Precision", "Recall", "F1"]]
+    st.bar_chart(chart, y_label="Percentage (%)", x_label="Algorithm", stack=False)
+    st.markdown("#### Average precision (area summary of precision–recall behaviour)")
+    st.bar_chart(display.set_index("Model")[["Average_Precision"]], y_label="Average precision (%)", x_label="Algorithm")
+    st.caption("Average precision is computed over ranked anomaly scores. These bars are aggregate metrics, not the complete precision–recall curves.")
+    st.markdown("#### False alarms versus missed attacks")
+    st.bar_chart(comparison_df.set_index("Model")[["FP", "FN"]].rename(columns={"FP":"False positives", "FN":"False negatives"}),
+                 y_label="Number of observations", x_label="Algorithm", stack=False)
+    st.markdown("#### What the results tell us")
+    st.markdown("""**Isolation Forest** achieved the highest F1-score (63.82%) and average precision (0.7298), indicating the strongest precision–recall balance of these tested configurations. **One-Class SVM** reached the highest recall (94.94%), but precision was only 14.82%, reflecting many false alarms. The **MLP reconstruction autoencoder** also achieved high recall (90.04%) but low precision (15.55%). These findings do not establish that one algorithm is universally best.""")
+    st.markdown("#### Experimental protocol")
+    st.markdown(f"""- **Features:** {comparison_meta['feature_count']} process variables; the same labelled SWaT attack-period observations used for all three evaluations.
+- **Normal-data split:** first {comparison_meta['normal_train_rows']:,} rows for training and last {comparison_meta['normal_calibration_rows']:,} for threshold calibration (chronological 80/20 split).
+- **Evaluation:** {comparison_meta['attack_test_rows']:,} attack-period rows containing both normal and attack labels.
+- **Threshold:** {comparison_meta['threshold_percentile']}th percentile of each model's normal calibration anomaly scores; each model has its own score scale.
+- **Training subsets:** One-Class SVM at most {comparison_meta['svm_training_max']:,} normal rows; MLP reconstruction autoencoder at most {comparison_meta['autoencoder_training_max']:,} normal rows.
+- **Random seed:** {comparison_meta['seed']}.
+- **Explainability:** SHAP-based sensor influence is demonstrated for Isolation Forest in the local research prototype and for the separate synthetic Isolation Forest online; equivalent explanations were not established for the other two models.""")
+    st.warning("**Research limitations:** These are offline results for particular models, hyperparameters, data splits and thresholds. The SVM and autoencoder used reduced training subsets. The hosted website does not train or run these SWaT-based models. No restricted SWaT observations or pretrained SWaT model artifacts are distributed.")
+    st.download_button("⬇ Download aggregate comparison metrics (CSV)", comparison_df.to_csv(index=False).encode("utf-8"),
+                       file_name="swat_aggregate_model_comparison.csv", mime="text/csv", key="compare_download")
 
 with summary:
     st.subheader("Synthetic monitoring dashboard")
