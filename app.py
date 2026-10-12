@@ -10,8 +10,17 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
 st.set_page_config(page_title="Industrial Anomaly Explainer · Demo", page_icon="⚙️", layout="wide")
-st.markdown("""<style>.block-container{padding-top:1.5rem;max-width:1350px}
-[data-testid="stMetric"]{background:rgba(125,125,125,.07);padding:14px 16px;border-radius:12px}</style>""", unsafe_allow_html=True)
+st.markdown("""<style>
+.block-container {padding-top:1.6rem;max-width:1400px;padding-bottom:3rem}
+[data-testid="stMetric"] {background:rgba(95,119,161,.10);border:1px solid rgba(115,142,181,.16);padding:16px 18px;border-radius:14px}
+[data-testid="stMetricLabel"] {font-weight:600}
+.hero {padding:26px 30px;border-radius:18px;background:linear-gradient(120deg,#132d4b,#164e63);color:#f4fbff;margin-bottom:20px}
+.hero h1 {font-size:2.1rem;line-height:1.15;color:#fff;margin:0 0 10px 0}
+.hero p {color:#d4eaf1;font-size:1rem;margin:0}
+.hero .eyebrow {font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:#91dbe7;font-weight:700;margin-bottom:12px}
+.section-note {padding:14px 18px;border-radius:12px;background:rgba(83,125,154,.10);border-left:4px solid #48a5c1;margin:14px 0}
+.small-note {font-size:.85rem;opacity:.85}
+</style>""", unsafe_allow_html=True)
 
 FEATURES = ["FIT101","LIT101","MV101","P101","P102","AIT201","AIT202","AIT203","FIT201","MV201",
 "P201","P202","P203","AIT301","AIT302","AIT303","FIT301","LIT301","MV301","P301",
@@ -73,9 +82,9 @@ def influence_chart(frame, model, scaler):
 
 normal, monitoring, labels, model, scaler, normal_scores, monitor_scores, threshold = build_demo()
 flags = (monitor_scores > threshold).astype(int)
-st.title("⚙️ Industrial Anomaly Explainer")
-st.caption("Interactive demonstration · Isolation Forest + SHAP · entirely synthetic sensor readings")
-st.warning("**DEMONSTRATION DATA ONLY.** This hosted application does not use the SWaT dataset or reproduce the project's SWaT evaluation results. The full research prototype runs locally with authorised data.",icon="ℹ️")
+st.markdown("""<div class="hero"><div class="eyebrow">Research prototype · Industrial anomaly detection</div>
+<h1>Industrial Anomaly Explainer</h1><p>Explainable machine learning for multivariate industrial sensor monitoring · Isolation Forest + SHAP</p></div>""", unsafe_allow_html=True)
+st.info("**Two clearly separated components:** The **Research Results** tab reports evaluation from the original locally run SWaT-based research prototype. The other interactive tabs run an **independent synthetic-data demonstration**. No SWaT records, attack schedules, or SWaT-trained model artifacts are hosted here.", icon="ℹ️")
 with st.sidebar:
     st.header("Demo observation controls")
     sample = st.selectbox("Quick example",["Injected disturbance example","Undisturbed example","Custom row"])
@@ -86,12 +95,48 @@ with st.sidebar:
     st.caption(f"{len(FEATURES)} synthetic features · {model.n_estimators} trees")
     st.caption("Threshold: normal training score 99th percentile")
 
-summary, observation, explain, temporal, context, method, explorer, simulator = st.tabs([
-    "📊 Overview","🔎 Observation","🧠 SHAP influence","📈 Temporal context",
-    "🚨 Disturbance context","ℹ️ Methodology","🔬 Anomaly Explorer","🎛️ Sensor Simulator"])
+research, summary, observation, explain, temporal, context, method, explorer, simulator = st.tabs([
+    "🎓 Research Results", "📊 Demo Overview", "🔎 Observation", "🧠 SHAP Influence", "📈 Temporal Context",
+    "🚨 Disturbance Context", "ℹ️ Methodology", "🔬 Anomaly Explorer", "🎛️ Sensor Simulator"])
+
+with research:
+    st.subheader("Research results · original SWaT-based prototype")
+    st.caption("These are results reported from the separate, locally executed SWaT research implementation. They are NOT computed by the hosted synthetic demonstration.")
+    r1,r2,r3,r4=st.columns(4)
+    r1.metric("Precision", "86.02%")
+    r2.metric("Recall", "61.81%")
+    r3.metric("F1-score", "71.93%")
+    r4.metric("Average precision (AP)", "0.7343")
+    st.markdown("#### Evaluation at a glance")
+    st.bar_chart(pd.DataFrame({"Metric": ["Precision", "Recall", "F1-score", "Average precision"],
+                               "Value": [0.8602,0.6181,0.7193,0.7343]}).set_index("Metric"),
+                 horizontal=True, x_label="Metric value (0–1)")
+    st.caption("Average precision (AP) summarises the precision–recall curve; it is not the same as ROC-AUC. Values above are rounded reported results.")
+    st.markdown("#### Research pipeline")
+    st.markdown("""**SWaT multivariate sensor data (authorised local access)** → **preprocessing** → **Isolation Forest anomaly scoring** → **normal-data threshold calibration** → **evaluation against available labels** → **SHAP-based sensor influence analysis**.""")
+    a,b=st.columns(2)
+    with a:
+        st.markdown("**Dataset and preprocessing**")
+        st.markdown("""- SWaT normal and attack datasets were used in the local research environment.
+- 45 process variables were retained after removing six constant features.
+- `StandardScaler` was fitted on normal training observations only.
+- No restricted SWaT data is included in this hosted application.""")
+    with b:
+        st.markdown("**Model and interpretation**")
+        st.markdown("""- Isolation Forest with 200 trees and `random_state=42`.
+- Higher anomaly scores indicate more unusual observations.
+- The research decision threshold was set at the 99th percentile of normal training scores.
+- Absolute SHAP magnitudes indicate relative influence on the explainer's internal model output, **not** causal effects.""")
+    st.markdown("#### What can be tested on this website?")
+    st.markdown("The remaining tabs let reviewers inspect synthetic observations, explore detected disturbances, change sensor values, generate synthetic monitoring sequences and upload **non-restricted** CSV samples. This validates the interaction design and analysis workflow, **not** the reported SWaT performance figures.")
+    st.warning("**Research limitations:** The online model is separately trained on synthetic readings. Its predictions, threshold and disturbance scenarios cannot be interpreted as SWaT results or validated real-world attack detection.")
+    st.markdown("#### Reproducibility and demonstration")
+    st.markdown("The original SWaT-trained prototype and its research evaluation are maintained locally for authorised demonstration. This website intentionally does not provide the restricted dataset or pretrained SWaT artifacts.")
+    st.link_button("View public synthetic demo source code", "https://github.com/Ainuddin28/industrial-anomaly-detection")
 
 with summary:
-    st.subheader("Synthetic demonstration monitoring")
+    st.subheader("Synthetic monitoring dashboard")
+    st.caption("All numbers and plots in this tab are generated from the hosted synthetic model, not the original SWaT evaluation.")
     a,b,c,d=st.columns(4)
     a.metric("Monitoring observations",f"{len(monitoring):,}")
     b.metric("Injected disturbance rows",f"{int(labels.sum()):,}")
@@ -140,7 +185,8 @@ with context:
     st.caption("Injected changes are not a physical plant simulation and do not establish a cyberattack.")
 
 with method:
-    st.subheader("Demonstration methodology")
+    st.subheader("Hosted demonstration methodology")
+    st.info("This methodology describes the synthetic model powering the interactive tabs. See **Research Results** for the separate SWaT research pipeline.")
     st.markdown("""**Source:** reproducibly generated synthetic multivariate sensor readings; no SWaT records are bundled.  
 **Model:** Isolation Forest (200 trees, `random_state=42`) trained only on synthetic normal readings.  
 **Preprocessing:** StandardScaler fitted on synthetic normal readings only.  
@@ -269,4 +315,4 @@ with simulator:
         except (ValueError,pd.errors.ParserError,UnicodeDecodeError) as exc:
             st.error(f"Could not read CSV: {exc}")
 st.divider()
-st.caption("Synthetic online demonstration only · Full SWaT research prototype is maintained separately for authorised local use.")
+st.caption("Research metrics: original local SWaT evaluation · Interactive predictions: independent synthetic model · No restricted SWaT data hosted · Academic demonstration, not a production monitoring system.")
