@@ -127,6 +127,8 @@ with research:
 - Higher anomaly scores indicate more unusual observations.
 - The research decision threshold was set at the 99th percentile of normal training scores.
 - Absolute SHAP magnitudes indicate relative influence on the explainer's internal model output, **not** causal effects.""")
+    st.markdown("#### Guided demonstration workflow")
+    st.markdown("**Start here:** Review the real SWaT metrics above → open **Demo Overview** to inspect synthetic monitoring → use **Anomaly Explorer** for model-flagged readings → visit **Sensor Simulator** to enter all 45 readings manually, generate synthetic streams, or upload a non-restricted CSV → inspect SHAP influence. Every interactive prediction uses the separate synthetic-trained model.")
     st.markdown("#### What can be tested on this website?")
     st.markdown("The remaining tabs let reviewers inspect synthetic observations, explore detected disturbances, change sensor values, generate synthetic monitoring sequences and upload **non-restricted** CSV samples. This validates the interaction design and analysis workflow, **not** the reported SWaT performance figures.")
     st.warning("**Research limitations:** The online model is separately trained on synthetic readings. Its predictions, threshold and disturbance scenarios cannot be interpreted as SWaT results or validated real-world attack detection.")
@@ -217,30 +219,96 @@ with explorer:
         influence_chart(monitoring.iloc[[picked]],model,scaler)
 
 with simulator:
-    st.subheader("Manual sensor what-if simulation")
-    st.caption("Edit synthetic readings, run the model, and inspect the SHAP influence ranking.")
-    source=st.radio("Baseline",["Synthetic normal training row","Synthetic monitoring row"],horizontal=True)
-    base=normal if source=="Synthetic normal training row" else monitoring
-    default_row=100 if source=="Synthetic normal training row" else 280
-    row=int(st.number_input("Baseline row",0,len(base)-1,default_row,1,key="manual_row"))
-    original=base.iloc[row].copy()
-    sensors=st.multiselect("Sensors to change",FEATURES,default=["LIT101","FIT101","LIT301"])
-    modified=original.copy()
-    for sensor in sensors:
-        modified[sensor]=st.number_input(f"{sensor} · original {original[sensor]:.4f}",value=float(original[sensor]),format="%.6f",key=f"manual_{source}_{row}_{sensor}")
-    if st.button("▶ Run anomaly detection",type="primary"):
-        test=pd.DataFrame([modified],columns=FEATURES)
+    st.subheader("Manual observation lab · edit all 45 sensor readings")
+    st.caption("All 45 synthetic-model input features are editable in one table. Start from a synthetic baseline or create a fully custom observation. This is NOT the locally trained SWaT model.")
+    if "lab_values" not in st.session_state:
+        st.session_state["lab_values"] = normal.iloc[100].to_numpy(dtype=float).copy()
+        st.session_state["lab_reference"] = normal.iloc[100].to_numpy(dtype=float).copy()
+        st.session_state["lab_result"] = None
+    st.markdown("#### 1 · Set up an observation")
+    mode = st.selectbox("Starting point", ["Synthetic normal example", "Synthetic disturbed example", "Blank values (all zero)", "Keep my current edits"], key="lab_mode")
+    col_a, col_b, col_c = st.columns([1,1,1])
+    with col_a:
+        baseline_index = int(st.number_input("Baseline observation index", min_value=0, max_value=1499, value=280, step=1, key="lab_baseline_index", disabled=mode in ("Blank values (all zero)","Keep my current edits")))
+    with col_b:
+        st.write(" ")
+        if st.button("↺ Load selected starting point", use_container_width=True, key="lab_load"):
+            if mode == "Synthetic normal example":
+                vals = normal.iloc[baseline_index % len(normal)].to_numpy(dtype=float)
+            elif mode == "Synthetic disturbed example":
+                vals = monitoring.iloc[baseline_index].to_numpy(dtype=float)
+            elif mode == "Blank values (all zero)":
+                vals = np.zeros(len(FEATURES), dtype=float)
+            else:
+                vals = st.session_state["lab_values"].copy()
+            st.session_state["lab_values"] = vals.copy()
+            st.session_state["lab_reference"] = vals.copy()
+            st.session_state["lab_result"] = None
+            st.session_state.pop("lab_editor", None)
+            st.rerun()
+    with col_c:
+        st.write(" ")
+        if st.button("↩ Reset to original synthetic baseline", use_container_width=True, key="lab_reset"):
+            vals = normal.iloc[100].to_numpy(dtype=float)
+            st.session_state["lab_values"] = vals.copy()
+            st.session_state["lab_reference"] = vals.copy()
+            st.session_state["lab_result"] = None
+            st.session_state.pop("lab_editor", None)
+            st.rerun()
+    st.markdown("#### 2 · Enter all sensor values")
+    st.info("**Edit the Value column** for any or all of the 45 sensors. Use the starting-point button to load an example, then edit values directly. The reference and difference columns are informational.")
+    reference = np.asarray(st.session_state["lab_reference"],dtype=float)
+    values = np.asarray(st.session_state["lab_values"],dtype=float)
+    editor_df = pd.DataFrame({"Sensor": FEATURES, "Value": values, "Reference": reference, "Change": values-reference})
+    edited = st.data_editor(editor_df, hide_index=True, use_container_width=True, num_rows="fixed", key="lab_editor",
+                            disabled=["Sensor","Reference","Change"],
+                            column_config={"Sensor":st.column_config.TextColumn("Sensor",width="medium"),
+                                           "Value":st.column_config.NumberColumn("Value · editable",format="%.6f",required=True),
+                                           "Reference":st.column_config.NumberColumn("Starting value",format="%.6f"),
+                                           "Change":st.column_config.NumberColumn("Change at last run",format="%.6f")})
+    try:
+        entered = pd.to_numeric(edited["Value"],errors="coerce").to_numpy(dtype=float)
+        valid = len(entered)==len(FEATURES) and np.isfinite(entered).all()
+    except (ValueError,TypeError):
+        valid=False
+    if not valid:
+        st.error("All 45 sensor readings must be finite numeric values. Correct the highlighted entries before running.")
+    else:
+        changes=int(np.count_nonzero(~np.isclose(entered,reference,rtol=1e-9,atol=1e-9)))
+        st.caption(f"{len(FEATURES)} sensor inputs · {changes} different from the loaded reference · values are illustrative and may not match physical equipment ranges.")
+    st.markdown("#### 3 · Analyse your custom observation")
+    if st.button("▶ Analyse all 45 readings",type="primary",disabled=not valid,key="lab_run"):
+        test = pd.DataFrame([entered],columns=FEATURES)
         scores,preds=score_rows(test,model,scaler,threshold)
-        st.session_state["manual_result"]=(source,row,float(scores[0]),int(preds[0]),test.copy())
-    result=st.session_state.get("manual_result")
-    if result is not None and result[0]==source and result[1]==row:
-        _,_,score,pred,test=result
-        a,b,c=st.columns(3)
-        a.metric("Prediction","ANOMALY" if pred else "NORMAL")
-        b.metric("Anomaly score",f"{score:.6f}")
-        c.metric("Threshold",f"{threshold:.6f}")
-        influence_chart(test,model,scaler)
-        st.caption("Click Run again after editing readings to refresh the result.")
+        baseline_frame=pd.DataFrame([reference],columns=FEATURES)
+        baseline_score,baseline_pred=score_rows(baseline_frame,model,scaler,threshold)
+        st.session_state["lab_values"]=entered.copy()
+        st.session_state["lab_result"]={"values":entered.copy(),"reference":reference.copy(),
+                                        "score":float(scores[0]),"pred":int(preds[0]),
+                                        "base_score":float(baseline_score[0]),"base_pred":int(baseline_pred[0])}
+    result=st.session_state.get("lab_result")
+    if result is not None:
+        st.success("Analysis complete · results from the hosted synthetic-trained Isolation Forest.")
+        r1,r2,r3,r4=st.columns(4)
+        r1.metric("Custom prediction","ANOMALY" if result["pred"] else "NORMAL")
+        r2.metric("Custom anomaly score",f'{result["score"]:.6f}',delta=f'{result["score"]-result["base_score"]:+.6f} vs reference',delta_color="inverse")
+        r3.metric("Decision threshold",f'{threshold:.6f}')
+        r4.metric("Reference prediction","ANOMALY" if result["base_pred"] else "NORMAL")
+        st.caption("Higher scores mean more unusual observations. The threshold is calibrated on synthetic normal training data. A prediction is not a physical safety assessment.")
+        comparison=pd.DataFrame({"Sensor":FEATURES,"Reference":result["reference"],"Custom":result["values"],"Difference":result["values"]-result["reference"]})
+        changed=comparison.loc[~np.isclose(comparison["Difference"],0,atol=1e-9,rtol=1e-9)]
+        st.markdown("##### Sensor changes")
+        if changed.empty:
+            st.info("No sensor readings differ from the selected reference. Try changing several values and analyse again.")
+        else:
+            st.dataframe(changed,hide_index=True,use_container_width=True)
+            top_diff=changed.assign(AbsChange=changed["Difference"].abs()).nlargest(12,"AbsChange")
+            st.bar_chart(top_diff.set_index("Sensor")["Difference"],horizontal=True)
+        st.markdown("##### SHAP sensor influence · custom observation")
+        custom_frame=pd.DataFrame([result["values"]],columns=FEATURES)
+        influence_chart(custom_frame,model,scaler)
+        st.download_button("⬇ Download custom observation + prediction",data=custom_frame.assign(Anomaly_score=result["score"],Predicted_anomaly=result["pred"]).to_csv(index=False),file_name="custom_synthetic_observation_prediction.csv",mime="text/csv",key="lab_download")
+        st.caption("If you change table values, click Analyse again to update the results. SHAP magnitudes are not causal attributions.")
     st.divider()
     st.subheader("Automatic synthetic sensor generator")
     a,b,c=st.columns(3)
