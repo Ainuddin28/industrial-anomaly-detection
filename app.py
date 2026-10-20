@@ -86,7 +86,7 @@ normal, monitoring, labels, model, scaler, normal_scores, monitor_scores, thresh
 flags = (monitor_scores > threshold).astype(int)
 st.markdown("""<div class="hero"><div class="eyebrow">Research prototype · Industrial anomaly detection</div>
 <h1>Industrial Anomaly Explainer</h1><p>Explainable machine learning for multivariate industrial sensor monitoring · Isolation Forest + SHAP</p></div>""", unsafe_allow_html=True)
-st.info("**Two clearly separated components:** The **Research Results** and **Model Comparison** tabs report results from locally run SWaT research experiments (using different evaluation protocols). The other interactive tabs run an **independent synthetic-data demonstration**. No SWaT records, attack schedules, or SWaT-trained model artifacts are hosted here.", icon="ℹ️")
+st.info("**Two clearly separated components:** The **Research Results**, **Nine-Model Comparison** and **Research SHAP** tabs report results from locally run SWaT research experiments (using different evaluation protocols). The other interactive tabs run an **independent synthetic-data demonstration**. No SWaT records, attack schedules, or SWaT-trained model artifacts are hosted here.", icon="ℹ️")
 with st.sidebar:
     st.header("Demo observation controls")
     sample = st.selectbox("Quick example",["Injected disturbance example","Undisturbed example","Custom row"])
@@ -97,13 +97,13 @@ with st.sidebar:
     st.caption(f"{len(FEATURES)} synthetic features · {model.n_estimators} trees")
     st.caption("Threshold: normal training score 99th percentile")
 
-research, comparison, summary, observation, explain, temporal, context, method, explorer, simulator = st.tabs([
-    "🎓 Research Results", "⚖️ Model Comparison", "📊 Demo Overview", "🔎 Observation", "🧠 SHAP Influence", "📈 Temporal Context",
+research, comparison, research_shap, summary, observation, explain, temporal, context, method, explorer, simulator = st.tabs([
+    "🎓 Research Results", "⚖️ Nine-Model Comparison", "🧬 Research SHAP", "📊 Demo Overview", "🔎 Observation", "🧠 SHAP Influence", "📈 Temporal Context",
     "🚨 Disturbance Context", "ℹ️ Methodology", "🔬 Anomaly Explorer", "🎛️ Sensor Simulator"])
 
 with research:
     st.subheader("Research results · original SWaT-based prototype")
-    st.info("These original Isolation Forest figures use a different training/calibration protocol from the three-model experiment. Compare the three algorithms using the **Model Comparison** tab, not against the figures below.")
+    st.info("These original Isolation Forest figures use a different training/calibration protocol from the nine-model research comparison. Compare the nine algorithms using the **Model Comparison** tab, not against the figures below.")
     st.caption("These are results reported from the separate, locally executed SWaT research implementation. They are NOT computed by the hosted synthetic demonstration.")
     r1,r2,r3,r4=st.columns(4)
     r1.metric("Precision", "86.02%")
@@ -131,7 +131,7 @@ with research:
 - The research decision threshold was set at the 99th percentile of normal training scores.
 - Absolute SHAP magnitudes indicate relative influence on the explainer's internal model output, **not** causal effects.""")
     st.markdown("#### Guided demonstration workflow")
-    st.markdown("**Start here:** Review the original SWaT metrics above → open **Model Comparison** for the separate three-model experiment → open **Demo Overview** to inspect synthetic monitoring → use **Anomaly Explorer** for model-flagged readings → visit **Sensor Simulator** to enter all 45 readings manually, generate synthetic streams, or upload a non-restricted CSV → inspect SHAP influence. Every interactive prediction uses the separate synthetic-trained model.")
+    st.markdown("**Start here:** Review the original SWaT metrics above → open **Nine-Model Comparison** for the nine-model study and **Research SHAP** for local explanation summaries → open **Demo Overview** to inspect synthetic monitoring → use **Anomaly Explorer** for model-flagged readings → visit **Sensor Simulator** to enter all 45 readings manually, generate synthetic streams, or upload a non-restricted CSV → inspect SHAP influence. Every interactive prediction uses the separate synthetic-trained model.")
     st.markdown("#### What can be tested on this website?")
     st.markdown("The remaining tabs let reviewers inspect synthetic observations, explore detected disturbances, change sensor values, generate synthetic monitoring sequences and upload **non-restricted** CSV samples. This validates the interaction design and analysis workflow, **not** the reported SWaT performance figures.")
     st.warning("**Research limitations:** The online model is separately trained on synthetic readings. Its predictions, threshold and disturbance scenarios cannot be interpreted as SWaT results or validated real-world attack detection.")
@@ -141,48 +141,44 @@ with research:
 
 
 with comparison:
-    st.subheader("Three-model comparison · local SWaT experiment")
-    st.caption("Aggregate results from a separate, locally executed experiment on labelled SWaT attack-period observations. These are NOT predictions from the hosted synthetic demonstration.")
-    st.info("**Evaluation distinction:** The original Research Results tab reports an earlier Isolation Forest experiment (F1 71.93%). This comparison uses a chronological 80/20 normal training/calibration split and a separate 99th-percentile calibration threshold (Isolation Forest F1 63.82%). The two experiments are not directly comparable.")
-    comparison_df = pd.read_csv(Path(__file__).resolve().parent / "model_comparison.csv")
-    comparison_meta = json.loads((Path(__file__).resolve().parent / "experiment_metadata.json").read_text(encoding="utf-8"))
-    display = comparison_df.copy()
-    for col in ["Precision", "Recall", "F1", "Average_Precision"]:
-        display[col] = display[col] * 100
-    st.markdown("#### Measured evaluation results")
-    st.dataframe(display[["Model", "Precision", "Recall", "F1", "Average_Precision", "FP", "FN"]].rename(columns={
-        "Precision": "Precision (%)", "Recall": "Recall (%)", "F1": "F1 (%)",
-        "Average_Precision": "Average precision (%)", "FP": "False positives", "FN": "False negatives"
-    }).style.format({"Precision (%)":"{:.2f}", "Recall (%)":"{:.2f}", "F1 (%)":"{:.2f}",
-                     "Average precision (%)":"{:.2f}"}), hide_index=True, use_container_width=True)
-    best_f1 = comparison_df.loc[comparison_df["F1"].idxmax()]
-    best_recall = comparison_df.loc[comparison_df["Recall"].idxmax()]
-    k1,k2,k3 = st.columns(3)
-    k1.metric("Highest F1", str(best_f1["Model"]), f'{best_f1["F1"]:.2%}')
-    k2.metric("Highest recall", str(best_recall["Model"]), f'{best_recall["Recall"]:.2%}')
-    k3.metric("Evaluated SWaT rows", f'{int(comparison_meta["attack_test_rows"]):,}')
-    st.markdown("#### Precision, recall and F1")
-    chart = display.set_index("Model")[["Precision", "Recall", "F1"]]
-    st.bar_chart(chart, y_label="Percentage (%)", x_label="Algorithm", stack=False)
-    st.markdown("#### Average precision (area summary of precision–recall behaviour)")
-    st.bar_chart(display.set_index("Model")[["Average_Precision"]], y_label="Average precision (%)", x_label="Algorithm")
-    st.caption("Average precision is computed over ranked anomaly scores. These bars are aggregate metrics, not the complete precision–recall curves.")
-    st.markdown("#### False alarms versus missed attacks")
-    st.bar_chart(comparison_df.set_index("Model")[["FP", "FN"]].rename(columns={"FP":"False positives", "FN":"False negatives"}),
-                 y_label="Number of observations", x_label="Algorithm", stack=False)
-    st.markdown("#### What the results tell us")
-    st.markdown("""**Isolation Forest** achieved the highest F1-score (63.82%) and average precision (0.7298), indicating the strongest precision–recall balance of these tested configurations. **One-Class SVM** reached the highest recall (94.94%), but precision was only 14.82%, reflecting many false alarms. The **MLP reconstruction autoencoder** also achieved high recall (90.04%) but low precision (15.55%). These findings do not establish that one algorithm is universally best.""")
-    st.markdown("#### Experimental protocol")
-    st.markdown(f"""- **Features:** {comparison_meta['feature_count']} process variables; the same labelled SWaT attack-period observations used for all three evaluations.
-- **Normal-data split:** first {comparison_meta['normal_train_rows']:,} rows for training and last {comparison_meta['normal_calibration_rows']:,} for threshold calibration (chronological 80/20 split).
-- **Evaluation:** {comparison_meta['attack_test_rows']:,} attack-period rows containing both normal and attack labels.
-- **Threshold:** {comparison_meta['threshold_percentile']}th percentile of each model's normal calibration anomaly scores; each model has its own score scale.
-- **Training subsets:** One-Class SVM at most {comparison_meta['svm_training_max']:,} normal rows; MLP reconstruction autoencoder at most {comparison_meta['autoencoder_training_max']:,} normal rows.
-- **Random seed:** {comparison_meta['seed']}.
-- **Explainability:** SHAP-based sensor influence is demonstrated for Isolation Forest in the local research prototype and for the separate synthetic Isolation Forest online; equivalent explanations were not established for the other two models.""")
-    st.warning("**Research limitations:** These are offline results for particular models, hyperparameters, data splits and thresholds. The SVM and autoencoder used reduced training subsets. The hosted website does not train or run these SWaT-based models. No restricted SWaT observations or pretrained SWaT model artifacts are distributed.")
-    st.download_button("⬇ Download aggregate comparison metrics (CSV)", comparison_df.to_csv(index=False).encode("utf-8"),
-                       file_name="swat_aggregate_model_comparison.csv", mime="text/csv", key="compare_download")
+    st.subheader("Nine-model comparison · local SWaT research")
+    st.caption("Offline, aggregate experimental results from the locally executed SWaT study. No restricted data or trained SWaT models are included.")
+    st.info("**Different protocols:** The original prototype's 71.93% F1 is from an earlier experiment. The nine-model study reports 63.82% F1 for Isolation Forest under another training/calibration protocol. Point-wise and window-based models also differ in evaluation alignment and training subsets; rankings are descriptive, not a controlled universal benchmark.")
+    nine = pd.read_csv(Path(__file__).resolve().parent / "nine_model_aggregate.csv")
+    x,y,z = st.columns(3)
+    x.metric("Models evaluated", "9")
+    y.metric("Highest F1 · Isolation Forest", "63.82%")
+    z.metric("Highest recall · One-Class SVM", "90.49%")
+    st.markdown("#### Nine-model results")
+    st.dataframe(nine.rename(columns={"F1_percent":"F1 (%)","AP_percent":"Average precision (%)","Precision_percent":"Precision (%)","Recall_percent":"Recall (%)","Evaluation_type":"Evaluation type"}).style.format({"F1 (%)":"{:.2f}","Average precision (%)":"{:.2f}","Precision (%)":"{:.2f}","Recall (%)":"{:.2f}"},na_rep="Not verified"),hide_index=True,use_container_width=True)
+    st.caption("Some metrics are omitted where exact values were not available in the supplied screenshots. F1 and AP are rounded for display; underlying measurements and evaluation choices are documented locally.")
+    st.markdown("#### F1 ranking")
+    st.bar_chart(nine.sort_values("F1_percent").set_index("Model")["F1_percent"], horizontal=True, x_label="F1 (%)")
+    st.markdown("#### Average precision ranking")
+    st.bar_chart(nine.sort_values("AP_percent").set_index("Model")["AP_percent"], horizontal=True, x_label="Average precision (%)")
+    st.markdown("#### Precision versus recall")
+    st.bar_chart(nine.set_index("Model")[["Precision_percent","Recall_percent"]].rename(columns={"Precision_percent":"Precision (%)","Recall_percent":"Recall (%)"}),stack=False)
+    st.markdown("#### Research interpretation")
+    st.markdown("**Isolation Forest** produced the strongest F1 (63.82%) and average precision (72.98%) in this set of experiments, with 60.96% precision and 66.96% recall. **One-Class SVM** showed high recall (90.49%) but low precision (14.82%). The compact **USAD** implementation ranked second in F1 (30.36%). These results reflect the tested configurations only.")
+    st.warning("**Methodological caveat:** Point-wise and window-based detectors are presented together for research overview, not as an exactly matched head-to-head comparison. Window-based models align their labels with the final timestep and exclude the first window−1 test rows. The USAD implementation is preliminary, not a reproduction of published benchmark settings.")
+    st.download_button("⬇ Download nine-model aggregate metrics",nine.to_csv(index=False).encode("utf-8"),file_name="nine_model_aggregate_metrics.csv",mime="text/csv",key="nine_download")
+    with st.expander("Earlier three-model experiment · full aggregate confusion counts"):
+        original = pd.read_csv(Path(__file__).resolve().parent / "model_comparison.csv")
+        st.dataframe(original,hide_index=True,use_container_width=True)
+        st.caption("Earlier three-model aggregate results retained for traceability. No SWaT observation-level data is hosted.")
+
+with research_shap:
+    st.subheader("Research SHAP · local Isolation Forest")
+    st.info("These are **aggregate, research-derived SHAP influence summaries** for selected local SWaT observations. The public interactive SHAP tab uses a separate synthetic-trained Isolation Forest. The explainer values are for the forest's internal output, **not** signed anomaly scores or physical causes.")
+    st.markdown("#### True-positive attack observation")
+    attack = pd.DataFrame({"Sensor":["AIT501","PIT501","PIT503","FIT502","FIT501","FIT503","FIT504","LIT401","MV304","UV401"],"Absolute SHAP magnitude":[0.609746,0.567487,0.550689,0.533861,0.526948,0.522674,0.495088,0.450556,0.442061,0.389468]})
+    st.bar_chart(attack.set_index("Sensor"),horizontal=True)
+    st.markdown("#### True-negative normal observation")
+    normal = pd.DataFrame({"Sensor":["AIT201","AIT202","AIT504","LIT101","AIT501","AIT402","PIT503","FIT502","P205","FIT401"],"Absolute SHAP magnitude":[0.451255,0.397481,0.338790,0.309995,0.250296,0.244757,0.184622,0.152240,0.122929,0.119226]})
+    st.bar_chart(normal.set_index("Sensor"),horizontal=True)
+    st.caption("Values transcribed from locally executed run_shap_comparison.py terminal output. These are selected examples, not population-level feature importance or causal attribution.")
+    st.markdown("**Interpretation:** AIT501, PIT501 and PIT503 have prominent absolute SHAP magnitudes in the selected detected attack; AIT201 and AIT202 are prominent in the selected correctly classified normal observation. Magnitude alone does not show which physical component caused an anomaly.")
+    st.warning("No raw SWaT readings, attack schedules, row-level exports, or SWaT-trained model files are included in this public dashboard.")
 
 with summary:
     st.subheader("Synthetic monitoring dashboard")

@@ -1,0 +1,10 @@
+Model,F1_percent,AP_percent,Precision_percent,Recall_percent,Evaluation_type
+Isolation Forest,63.8206,72.9793,60.9628,66.9596,Point-wise
+USAD,30.36,72.86,18.62,82.31,Window-based
+MiniBatch K-Means,28.9,71.7,,,Point-wise
+GRU Autoencoder,28.7,72.46,17.11,88.85,Window-based
+LSTM Autoencoder,28.3,71.12,16.78,90.13,Window-based
+One-Class SVM,25.642,71.7482,14.8228,94.9378,Point-wise
+PCA Reconstruction,25.48,71.69,14.83,90.21,Point-wise
+MLP Autoencoder,26.5228,71.6993,15.5518,90.0441,Point-wise
+LOF,21.52,14.82,12.6,73.79,Point-wise
